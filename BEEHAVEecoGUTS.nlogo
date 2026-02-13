@@ -2283,7 +2283,7 @@ to WorkerLarvaeDevProc ; ageing of cohort
         set Ldx 1 - (1 / (1 + (ETOX_PPPOralDose / ETOX_Larvae_Oral_LD50)^ ETOX_Larvae_Oral_SLOPE)) ; Dose-response relationship for larvae mortality from exposure by honey
         ]
         if ldx > 1 [User-Message word "Larvae DR >1" LDX]
-        if ldx > 0.9 [Set ldx 1] ; To avoid errors caused by Netlogo rounding
+        if ldx > 0.99 [Set ldx 1] ; To avoid errors caused by Netlogo rounding
         if number > numberDied
         [
          set ETOX_died round (ldx * (number - numberDied))
@@ -2333,7 +2333,7 @@ to DroneLarvaeDevProc ; ageing of cohort
         [
          set Ldx 1 - (1 / (1 + (ETOX_PPPOralDose / ETOX_Larvae_Oral_LD50)^ ETOX_Larvae_Oral_SLOPE)) ; dose-response relationship for larvae mortality from exposure by honey
         ]
-        if ldx > 0.9 [Set ldx 1] ; To avoid errors caused by Netlogo rounding
+        if ldx > 0.99 [Set ldx 1] ; To avoid errors caused by Netlogo rounding
         if number > numberDied
         [
          set ETOX_died round (ldx * (number - numberDied))
@@ -5402,7 +5402,7 @@ to Foraging_mortalityProc
    let ldx 0
    ask foragerSquadrons
    [
-     if ETOX_PPPOralDose < 0 [ set ETOX_PPPOralDose 1]
+     if ETOX_PPPOralDose < 0 [ set ETOX_PPPOralDose 0]
      set Ldx 1 - (1 / (1 + (ETOX_PPPOralDose / ETOX_Forager_Oral_LD50)^ ETOX_Forager_Oral_SLOPE)) ; dose-response relationship for forager mortality from exposure by honey
      if ldx > ETOX_rdm_survival_oral
      [
@@ -5658,13 +5658,8 @@ to ForagersLifespanProc
       if ETOX_PPPOralDose > 1E-20
       [
         set ETOX_Cum_Dose_Forager ETOX_Cum_Dose_Forager + ETOX_PPPOralDose ; add the oral dose of the forager squadron to the cumulative daily dose for all foragers
-        ifelse ETOX_PPPOralDose < ETOX_Forager_Oral_LD50 * 1E5
-        [
-          set Ldx 1 - (1 / (1 + (ETOX_PPPOralDose / ETOX_Forager_Oral_LD50)^ ETOX_Forager_Oral_SLOPE)) ; dose-response relationship for forager mortality from exposure by honey
-        ]
-        [;Else
-          set ldx 0
-        ]
+
+        set Ldx 1 - (1 / (1 + (ETOX_PPPOralDose / ETOX_Forager_Oral_LD50)^ ETOX_Forager_Oral_SLOPE)) ; dose-response relationship for forager mortality from exposure by honey
         if ldx > ETOX_rdm_survival_oral
         [
           set ETOX_foragers_died ETOX_foragers_died + squadron_size
@@ -8510,18 +8505,100 @@ to TupdateInternalExposureNectar_ETOX
 ;  ;######################################################### START GUTS-BeeGUTS-Ecotox #############################################################################
 let numberSquadrons count turtles with [ breed = foragerSquadrons] ;To correctly assign Thermal energy usage
 
-;Order changed from original BEEHAVEecotox implementation. IHbee Cohorts are asked first to assign thermal upkeep energy usage, rather than foragers.
-if any? IHbeeCohorts
+
+
+; Three implementations to handle thermoregulation energy requirements.
+;Option 1: close to original. Single randomly chosen cohort consumes all energy for thermoregulation. This cohort can be any size (but not 0), so sometimes cohort with a single bee can be chosen
+;Option 2: Equal distribution among IH-bees of chosen age-range. Define min and max age. Energy is then distributed equally among all bees in that age range. If there are are no bees in this range, automatically falls back to option 3. age range changes if it crosses AFF, may lead to only choose cohorts with age = AFF.
+;Option 3: Equal distribution among all IH-bees. Count number of all current IH-bees, and then equally distribute thermoregulation energy between them. Energy is distributed according to number of bees in cohort, so smaller cohorts consume less than larger cohorts
+
+let ThermoregulationHandling 1 ; Set only to 1, 2 or 3
+
+if ThermoregulationHandling < 1 or ThermoregulationHandling > 3 ; If invalid, use option 1
+[set ThermoregulationHandling 1]
+
+;For option 2. ONLY EXAMPLE VALUES! NO RELATION TO LITERATURE DATA! ONLY USE THIS OPTION IF AGE RANGE CAN BE CLEARLY DEFINED WITH LITERATURE SEARCH
+let MinAgeThermalregulation 5  ;Minimum age of IH bees for thermoregulation, should be >= 0, not tested for negative values
+let MaxAgeThermalregulation 10 ;Maximum age of IH bees for thermoregulation, should be >= 0 & > MinAgeThermalregulation, or we fall back to option 3, not tested for negative values
+
+if ThermoregulationHandling = 1
+[
+  ; Option 1, closest to original. One single randomly chosen (ask creates random order, only first one actually consumes additional honey) IH-bee cohort takes on all thermoregulation work.
+  ;This cohort can not be 0, but can be 1 to 1600 (maximum egg-per-day value)
+  if any? IHbeeCohorts
   [
     ask turtles with [ breed = IHbeeCohorts ]
     [
-      set ETOX_Consumed ETOX_EnergyThermo
-      set ETOX_EnergyThermo 0
-      Tfeed_on_honey_stores_foragers_ETOX ;Should probably be changed to Tfeed_on_honey_stores_cohorts_ETOX, but present in original BEEHAVEecotox in this way
-      ;An additional distribution of Thermal upkeep consumption to all cohorts, or even to cohorts based on their number of bees, is possible. Most accuracy probably by distributing to only nurse-bees, so younger bee cohorts.
-      ;Right now, only one cohort takes up all additional energy consumption, as ETOX_EnergyThermo is immediately set to 0, afterwards all asked cohorts run with ETOX_Consumed = 0.
+      if number > 0
+      [
+        set ETOX_Consumed ETOX_EnergyThermo
+        set ETOX_EnergyThermo 0
+        Tfeed_on_honey_stores_cohorts_ETOX
+      ]
     ]
   ]
+]
+
+if ThermoregulationHandling = 2
+[
+  ; Option 2: equal distribution among all IH-bees in specific age range
+  if any? IHbeeCohorts
+  [
+    let CurrentIHbeeNumberSum 0
+
+    ;Check if Age range falls out of AFF range
+    if MaxAgeThermalregulation > AFF
+    [set MaxAgeThermalregulation AFF]
+    if MinAgeThermalregulation > AFF
+    [set MinAgeThermalregulation AFF]
+
+    ;Count IHbees in specified age range
+    ask turtles with [ breed = IHbeeCohorts and age >= MinAgeThermalregulation and age <= MaxAgeThermalregulation]
+    [
+      set CurrentIHbeeNumberSum CurrentIHbeeNumberSum + number ; Count current number of IHbees.
+    ]
+
+    ifelse CurrentIHbeeNumberSum > 0
+    [;If there are bees in this age range
+      let ETOX_EnergyThermoPerBee ETOX_EnergyThermo / CurrentIHbeeNumberSum ; Divide between all IH bees equally, so calculate dose per bee
+      set ETOX_EnergyThermo 0
+
+      ask turtles with [breed = IHbeeCohorts and age >= MinAgeThermalregulation and age <= MaxAgeThermalregulation]
+      [
+        set ETOX_Consumed ETOX_EnergyThermoPerBee * number ; Calculate exposure based on number of bees in cohort
+        if number > 0; Current cohort has more than 0 bees
+        [ Tfeed_on_honey_stores_cohorts_ETOX ]
+      ]
+    ]
+    [; else , there are no bees in this age range, fall back to option 3
+      set ThermoregulationHandling 3 ; Fallback to Option 3.
+    ]
+  ]
+]
+
+if ThermoregulationHandling = 3
+[
+  ;Option 3: Equal distribution among all IH-bees
+  if any? IHbeeCohorts
+  [
+    let CurrentIHbeeNumberSum 0
+    ask turtles with [ breed = IHbeeCohorts ]
+    [
+      set CurrentIHbeeNumberSum CurrentIHbeeNumberSum + number ; Count current number of IHbees.
+    ]
+    let ETOX_EnergyThermoPerBee ETOX_EnergyThermo / CurrentIHbeeNumberSum ; Divide between all IH bees equally, so calculate dose per bee
+    set ETOX_EnergyThermo 0
+    ask turtles with [ breed = IHbeeCohorts ]
+    [
+      set ETOX_Consumed ETOX_EnergyThermoPerBee * number ; Calculate exposure based on number of bees in cohort
+      if number > 0; Current cohort has more than 0 bees
+        [ Tfeed_on_honey_stores_cohorts_ETOX ]
+    ]
+  ]
+]
+
+
+
 
 ;  ;######################################################### END GUTS-BeeGUTS-Ecotox #############################################################################
 
@@ -9851,7 +9928,6 @@ to-report GUTS_doGuts [time beecount] ;Actual calculation of GUTS. Time (should 
   report deathcount ;report back number of bees that died
 end
 ;  ;######################################################### END GUTS-BeeGUTS-Ecotox ###############################################################################
-
 @#$#@#$#@
 GRAPHICS-WINDOW
 1
