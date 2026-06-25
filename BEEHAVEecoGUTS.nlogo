@@ -2687,6 +2687,9 @@ to WorkerIHbeesDevProc
       ifelse GUTS_Version != "NoGuts"
         [ ;GUTS will run
 
+          if ETOX_PPPOralDose > 1E-20
+          [
+
           if number != 0 ;empty cohorts can exist sometimes
           [
             set GUTS_deathsincohort (GUTS_doGuts 24 number) ;Run GUTS for 24 hours (whole day), for "number" of bees in cohort. We get back the number of bees that died according to GUTS calculations
@@ -2710,6 +2713,8 @@ to WorkerIHbeesDevProc
 
             ;For visualisations
             set ETOX_IHbees_died ETOX_IHbees_died + guts_healthydeaths
+          ]
+
           ]
 
 
@@ -9683,10 +9688,10 @@ to GUTS_init_globals ; Initialization of GUTS parameters for each chemical. Hard
     set alpha 0
     set beta 0
 
-    set kd_SD 1.066
-    set hb_SD 0.007634
-    set kk 0.03044
-    set z 0.8669
+    set kd_SD 1.093
+    set hb_SD 0.00415
+    set kk 0.03
+    set z 0.7297
   ]
 
 
@@ -9720,10 +9725,10 @@ to GUTS_init_globals ; Initialization of GUTS parameters for each chemical. Hard
 
       if GUTS_Pesticide = "Thiacloprid" [
 
-        set kd_IT 0.001614
-        set hb_IT 0.007634
-        set alpha 0.06461
-        set beta 1.8112
+        set kd_IT 0.001641
+        set hb_IT 0.004151
+        set alpha 0.06295
+        set beta 1.78429546
 
         set kd_SD 0
         set hb_SD 0
